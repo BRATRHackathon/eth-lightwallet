@@ -6,13 +6,13 @@
     <script type="text/javascript" src="../node_modules/async/lib/async.js"></script>
 
     <script>
-
       var web3 = new Web3();
       var global_keystore;
 
       function setWeb3Provider(keystore) {
         var web3Provider = new HookedWeb3Provider({
-          host: "http://104.236.65.136:8545",
+          host: "http://localhost:8545",
+          //host: "https://mainnet.infura.io:8545",
           transaction_signer: keystore
         });
 
@@ -122,11 +122,20 @@
         })
       }
 
+      function hex2a(hexx) {
+          var hex = hexx.toString();//force conversion
+          var str = '';
+          for (var i = 0; i < hex.length; i += 2)
+              str += String.fromCharCode(parseInt(hex.substr(i, 2), 16));
+          return str;
+      }
+
       function functionCall() {
         var fromAddr = document.getElementById('functionCaller').value
         var contractAddr = document.getElementById('contractAddr').value
         var abi = JSON.parse(document.getElementById('contractAbi').value)
-        var contract = web3.eth.contract(abi).at(contractAddr)
+        var ctorData = JSON.parse('"' + document.getElementById('ctorData').value + '"') 
+        var contract = web3.eth.contract(abi, ctorData).at(contractAddr)
         var functionName = document.getElementById('functionName').value
         var args = JSON.parse('[' + document.getElementById('functionArgs').value + ']')
         var valueEth = document.getElementById('sendValueAmount').value
@@ -137,6 +146,7 @@
         var callback = function(err, txhash) {
           console.log('error: ' + err)
           console.log('txhash: ' + txhash)
+          console.log(hex2a(txhash))
         }
         args.push(callback)
         contract[functionName].apply(this, args)
@@ -163,6 +173,7 @@
     <div>Caller: <select id="functionCaller"></select></div>
     <div>Contract Address: <input type="text" size="40" id="contractAddr"></input></div>
     <div>Contract ABI: <input type="text" size="40" id="contractAbi"></input></div>
+    <div>Contract CtorData: <input type="text" size="40" id="ctorData"></input></div>
     <div>Function Name: <input type="text" size="20" id="functionName"></input></div>
     <div>Function Arguments: <input type="text" size="40" id="functionArgs"></input></div>
     <div>Value (Ether): <input type="text" id="sendValueAmount"></div>
