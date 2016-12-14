@@ -1,0 +1,163 @@
+<html>
+
+<body>
+    <script src="../dist/lightwallet.min.js"></script>
+    <script type="text/javascript" src="../node_modules/web3/dist/web3.js"></script>
+    <script type="text/javascript" src="../node_modules/hooked-web3-provider/build/hooked-web3-provider.js"></script>
+    <script type="text/javascript" src="../node_modules/async/lib/async.js"></script>
+
+    <script>
+      var web3 = new Web3();
+      var global_keystore;
+      var abi = [{ "constant": true, "inputs": [], "name": "GetRequiredSubscribers", "outputs": [{ "name": "", "type": "address[]" }], "payable": false, "type": "function" }, { "constant": false, "inputs": [{ "name": "newOwner", "type": "address" }], "name": "SetOwner", "outputs": [], "payable": false, "type": "function" }, { "constant": false, "inputs": [{ "name": "member", "type": "address" }], "name": "AddSubscriber", "outputs": [], "payable": false, "type": "function" }, { "constant": true, "inputs": [], "name": "ReadContent", "outputs": [{ "name": "", "type": "bytes" }], "payable": false, "type": "function" }, { "constant": false, "inputs": [], "name": "Sign", "outputs": [], "payable": false, "type": "function" }, { "constant": true, "inputs": [], "name": "GetSignedSubscribers", "outputs": [{ "name": "", "type": "address[]" }], "payable": false, "type": "function" }, { "constant": false, "inputs": [{ "name": "members", "type": "address[]" }], "name": "AddSubscribers", "outputs": [], "payable": false, "type": "function" }, { "constant": false, "inputs": [{ "name": "member", "type": "address" }], "name": "RemoveSubscriber", "outputs": [], "payable": false, "type": "function" }, { "inputs": [{ "name": "blob", "type": "bytes" }], "payable": false, "type": "constructor" }, { "anonymous": false, "inputs": [{ "indexed": false, "name": "", "type": "string" }], "name": "SendMessage", "type": "event" }];
+
+      function setWeb3Provider(keystore) {
+        var web3Provider = new HookedWeb3Provider({
+          host: "http://localhost:8545",          
+          transaction_signer: keystore
+        });
+
+        web3.setProvider(web3Provider);
+      }
+
+      function newAddresses(password) {        
+        if (password == '') {
+          password = prompt('Enter password to retrieve addresses', 'Password');
+        }        
+        lightwallet.keystore.deriveKeyFromPassword(password, function(err, pwDerivedKey) {
+            global_keystore.generateNewAddress(pwDerivedKey, 1);
+            
+            var addresses = global_keystore.getAddresses();
+
+            document.getElementById('sendFrom').innerHTML = ''
+            document.getElementById('functionCaller').innerHTML = ''
+            for (var i=0; i<addresses.length; ++i) {
+                document.getElementById('sendFrom').innerHTML += '<option value="' + addresses[i] + '">' + addresses[i] + '</option>'
+                document.getElementById('functionCaller').innerHTML += '<option value="' + addresses[i] + '">' + addresses[i] + '</option>'
+            }
+
+            getBalances();
+        })
+      }
+
+      function getBalances() {
+        
+        var addresses = global_keystore.getAddresses();
+        document.getElementById('addr').innerHTML = 'Retrieving addresses...'
+
+        async.map(addresses, web3.eth.getBalance, function(err, balances) {
+          async.map(addresses, web3.eth.getTransactionCount, function(err, nonces) {
+            document.getElementById('addr').innerHTML = ''
+            for (var i=0; i<addresses.length; ++i) {
+              document.getElementById('addr').innerHTML += '<div>' + addresses[i] + ' (Bal: ' + (balances[i] / 1.0e18) + ' ETH, Nonce: ' + nonces[i] + ')' + '</div>'
+            }
+          })
+        })
+
+      }
+
+      function loadId() {
+        var inptseed = document.getElementById('seed');
+        var id = inptseed.value;
+        if (id.length == 0) return;
+
+        var password = prompt('Enter Password to load your identity', 'Password');
+                                              
+        lightwallet.keystore.deriveKeyFromPassword(password, function(err, pwDerivedKey) {
+            global_keystore = new lightwallet.keystore(
+            id, 
+            pwDerivedKey);
+
+            global_keystore.generateNewAddress(pwDerivedKey, 1);
+            inptseed.value = ''
+            inptseed.style.display = 'none';
+            
+            setWeb3Provider(global_keystore);
+            
+            //getBalances();
+            document.getElementById('address1').innerText = global_keystore.getAddresses()[0];
+        })
+      }
+
+      String.prototype.hexDecode = function() {
+          var hexx = this;
+          var hex = hexx.toString();//force conversion
+          var str = '';
+          for (var i = 0; i < hex.length; i += 2)
+              str += String.fromCharCode(parseInt(hex.substr(i, 2), 16));
+          return decodeURIComponent(escape(str)).replace("                          ","\r\n");
+      }
+
+      function loadContract() {                
+        var contractAddr = document.getElementById('contractAddr').value;
+
+        if (contractAddr.length != 42) return;
+
+        var contract = web3.eth.contract(abi).at(contractAddr);
+                
+        var gasPrice = 50000000000
+        var gas = 3141592
+
+        contract.ReadContent(function(err, result) { 
+            var tarea = document.getElementById('contractText'); 
+            tarea.innerHTML = result.hexDecode();
+            tarea.style.display = 'block';          
+        });           
+      }
+
+      function SignIt() {
+        var fromAddr = global_keystore.getAddresses()[0];
+        var contractAddr = document.getElementById('contractAddr').value;                 
+        var contract = web3.eth.contract(abi).at(contractAddr);     
+        var block = web3.eth.getBlock('latest').number;
+
+        var event = contract.SendMessage(null, {fromBlock: block, toBlock: 'latest' }) 
+        event.watch(function (err, result) {
+            if (result.blockNumber > block) {
+                if (!err)
+                    document.getElementById('receipt').innerText = document.getElementById('receipt').innerText + 
+                    " (" + result.args[""] + ")";
+                else
+                    document.getElementById('receipt').innerText = document.getElementById('receipt').innerText + 
+                    " (" + err + ")";
+                
+                signedEvent.stopWatching();
+            }
+        });
+        var functionName = "Sign";
+
+        var args = [];      
+        var gasPrice = 50000000000
+        var gas = 3141592
+        args.push({from: fromAddr, value: 0, gasPrice: gasPrice, gas: gas})
+        var callback = function(err, txhash) {
+          console.log('error: ' + err)
+          console.log('txhash: ' + txhash)
+          console.log(hex2a(txhash))
+          document.getElementById('receipt').innerText = txhash;
+        }
+        args.push(callback)
+        contract[functionName].apply(this, args)
+      }
+
+    </script>
+    <h2>Your ID</h2>
+    <div>
+        <label for="id">
+            Your Identity Signature: 
+            <input type="text" name="id" id="seed" value="" size="80" onblur="loadId()"/>
+        </label>
+        <div id="address1"></div>
+    </div>
+
+    <h2>Contract Data</h2>
+    <div>Contract Address: <input type="text" size="40" id="contractAddr" onblur="loadContract()"></input>
+    <br>
+        <textarea name="" cols="200" rows="30" id="contractText" readonly style="display:none"></textarea>
+
+        <h2> Signature </h2>
+        <div><button onclick="SignIt()">Sign</button></div>
+        <div id="receipt"></div>
+</body>
+
+</html>
