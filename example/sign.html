@@ -97,8 +97,9 @@
                 
         var gasPrice = 50000000000
         var gas = 3141592
-
-        contract.ReadContent(function(err, result) { 
+        var fromAddr = global_keystore.getAddresses()[0];
+        
+        contract.ReadContent({from: fromAddr, value: 0, gasPrice: gasPrice, gas: gas}, function(err, result) { 
             var tarea = document.getElementById('contractText'); 
             tarea.innerHTML = result.hexDecode();
             tarea.style.display = 'block';          
@@ -114,14 +115,13 @@
         var event = contract.SendMessage(null, {fromBlock: block, toBlock: 'latest' }) 
         event.watch(function (err, result) {
             if (result.blockNumber > block) {
+                event.stopWatching();
                 if (!err)
                     document.getElementById('receipt').innerText = document.getElementById('receipt').innerText + 
                     " (" + result.args[""] + ")";
                 else
                     document.getElementById('receipt').innerText = document.getElementById('receipt').innerText + 
-                    " (" + err + ")";
-                
-                signedEvent.stopWatching();
+                    " (" + err + ")";                                
             }
         });
         var functionName = "Sign";
