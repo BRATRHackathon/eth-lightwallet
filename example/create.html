@@ -1,0 +1,364 @@
+<html>
+
+<head>
+  <title>TR - Agreement vault </title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+  <style>
+    .navbar-inverse {
+          text-align: left;
+          margin: 0.0px;
+          padding: 15.0px 10.0px 0.0px 0.0px;
+          background: #ff8800;
+          color: #ffffff;
+          font-family: arial;
+          height: 52.0px;
+          border-color: transparent;
+          border-radius: 0;
+     }
+     .pw_prompt {
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        margin-left: -150px;
+        padding: 15px;
+        /* width: 263px; */
+        border: 1px solid black;
+        background: darkorange;
+    }
+    .pw_prompt label {
+        display:block; 
+        margin-bottom:5px;
+    }
+    .pw_prompt input {
+        width:300px;
+        margin-bottom:10px;
+    }
+  </style>
+</head>
+
+<body>
+  <script src="../dist/lightwallet.min.js"></script>
+  <script type="text/javascript" src="../node_modules/web3/dist/web3.js"></script>
+  <script type="text/javascript" src="../node_modules/hooked-web3-provider/build/hooked-web3-provider.js"></script>
+  <script type="text/javascript" src="../node_modules/async/lib/async.js"></script>
+
+  <script>        
+
+    var promptCount = 0;
+    window.pw_prompt = function (options) {
+      var lm = options.lm || "Password:",
+        bm = options.bm || "Submit";
+      if (!options.callback) {
+        alert("No callback function provided! Please provide one.")
+      };
+
+      var prompt = document.createElement("div");
+      prompt.className = "pw_prompt";
+
+      var submit = function () {
+        options.callback(input.value);
+        document.body.removeChild(prompt);
+      };
+
+      var label = document.createElement("label");
+      label.textContent = lm;
+      label.for = "pw_prompt_input" + (++promptCount);
+      prompt.appendChild(label);
+
+      var input = document.createElement("input");
+      input.id = "pw_prompt_input" + (promptCount);
+      input.type = "password";
+      input.addEventListener("keyup", function (e) {
+        if (e.keyCode == 13) submit();
+      }, false);
+      prompt.appendChild(input);
+
+      var button = document.createElement("button");
+      button.textContent = bm;
+      button.addEventListener("click", submit, false);
+      prompt.appendChild(button);
+
+      document.body.appendChild(prompt);
+      document.getElementById(input.id).focus()
+    };
+
+
+    var web3 = new Web3();
+    var global_keystore;
+    var abi = [{ "constant": true, "inputs": [], "name": "GetRequiredSubscribers", "outputs": [{ "name": "", "type": "address[]" }], "payable": false, "type": "function" }, { "constant": false, "inputs": [{ "name": "newOwner", "type": "address" }], "name": "SetOwner", "outputs": [], "payable": false, "type": "function" }, { "constant": false, "inputs": [{ "name": "member", "type": "address" }], "name": "AddSubscriber", "outputs": [], "payable": false, "type": "function" }, { "constant": true, "inputs": [], "name": "ReadContent", "outputs": [{ "name": "", "type": "bytes" }], "payable": false, "type": "function" }, { "constant": false, "inputs": [], "name": "Sign", "outputs": [], "payable": false, "type": "function" }, { "constant": true, "inputs": [], "name": "GetSignedSubscribers", "outputs": [{ "name": "", "type": "address[]" }], "payable": false, "type": "function" }, { "constant": false, "inputs": [{ "name": "members", "type": "address[]" }], "name": "AddSubscribers", "outputs": [], "payable": false, "type": "function" }, { "constant": false, "inputs": [{ "name": "member", "type": "address" }], "name": "RemoveSubscriber", "outputs": [], "payable": false, "type": "function" }, { "inputs": [{ "name": "blob", "type": "bytes" }, { "name": "parts", "type": "address[]" }], "payable": false, "type": "constructor" }, { "anonymous": false, "inputs": [{ "indexed": false, "name": "message", "type": "string" }], "name": "SendMessage", "type": "event" }, { "anonymous": false, "inputs": [{ "indexed": false, "name": "subscribers", "type": "address[]" }], "name": "Create", "type": "event" }, { "anonymous": false, "inputs": [{ "indexed": false, "name": "signer", "type": "address" }, { "indexed": false, "name": "timestamp", "type": "uint256" }], "name": "Signed", "type": "event" }];
+
+    function setWeb3Provider(keystore) {
+      var web3Provider = new HookedWeb3Provider({
+        host: "http://localhost:8545",
+        transaction_signer: keystore
+      });
+
+      web3.setProvider(web3Provider);
+    }
+
+    function newAddresses(password) {
+      if (password == '') {
+        password = prompt('Enter password to retrieve addresses', 'Password');
+      }
+      lightwallet.keystore.deriveKeyFromPassword(password, function (err, pwDerivedKey) {
+        global_keystore.generateNewAddress(pwDerivedKey, 1);
+
+        var addresses = global_keystore.getAddresses();
+
+        document.getElementById('sendFrom').innerHTML = ''
+        document.getElementById('functionCaller').innerHTML = ''
+        for (var i = 0; i < addresses.length; ++i) {
+          document.getElementById('sendFrom').innerHTML += '<option value="' + addresses[i] + '">' + addresses[i] + '</option>'
+          document.getElementById('functionCaller').innerHTML += '<option value="' + addresses[i] + '">' + addresses[i] + '</option>'
+        }
+
+        getBalances();
+      })
+    }
+
+    function getBalances() {
+
+      var addresses = global_keystore.getAddresses();
+      document.getElementById('addr').innerHTML = 'Retrieving addresses...'
+
+      async.map(addresses, web3.eth.getBalance, function (err, balances) {
+        async.map(addresses, web3.eth.getTransactionCount, function (err, nonces) {
+          document.getElementById('addr').innerHTML = ''
+          for (var i = 0; i < addresses.length; ++i) {
+            document.getElementById('addr').innerHTML += '<div>' + addresses[i] + ' (Bal: ' + (balances[i] / 1.0e18) + ' ETH, Nonce: ' + nonces[i] + ')' + '</div>'
+          }
+        })
+      })
+
+    }
+
+    function loadId() {
+      var inptseed = document.getElementById('seed');
+      var id = inptseed.value;
+      if (id.length == 0) return;
+
+      var password = pw_prompt({
+        lm: 'Enter Password to load your identity',
+        bm: 'Load',
+        callback: function (password) {
+          document.getElementById('contractTerms').focus();
+          lightwallet.keystore.deriveKeyFromPassword(password, function (err, pwDerivedKey) {
+            global_keystore = new lightwallet.keystore(
+              id,
+              pwDerivedKey);
+            global_keystore.passwordProvider = function (callback) {
+              pw_prompt({
+                lm: 'Enter the signature password:',
+                bm: 'Sign',
+                callback: function (password) {
+                  callback(null, password, null);
+                }
+              })
+            }
+            global_keystore.generateNewAddress(pwDerivedKey, 1);
+            inptseed.value = ''
+            inptseed.style.display = 'none';
+
+            setWeb3Provider(global_keystore);
+
+            //getBalances();
+            document.getElementById('address1').innerText = global_keystore.getAddresses()[0];
+          })
+        }
+      });
+
+    }
+
+    String.prototype.hexDecode = function () {
+      var hexx = this;
+      var hex = hexx.toString();//force conversion
+      var str = '';
+      for (var i = 0; i < hex.length; i += 2)
+        str += String.fromCharCode(parseInt(hex.substr(i, 2), 16));
+      return decodeURIComponent(escape(str));
+    }
+
+    function addPart() {
+      var ctainer = $('#partAddresses');
+      ctainer.append($('<div class="col-sm-8"><input size="80" class="part" type="text" style="margin: 5px"/></div>'));
+    }
+
+    function loadContract() {
+      var contractAddr = document.getElementById('contractAddr').value;
+      document.getElementById('signBlock').style.display = 'none';
+
+      if (contractAddr.indexOf('0x') == -1) contractAddr = '0x' + contractAddr;
+
+      if (contractAddr.length != 42) return;
+
+      document.getElementById('contractAddr').value = contractAddr;
+
+      var contract = web3.eth.contract(abi).at(contractAddr);
+
+      var gasPrice = 50000000000
+      var gas = 3141592
+      var fromAddr = global_keystore.getAddresses()[0];
+
+      contract.ReadContent({ from: fromAddr, value: 0, gasPrice: gasPrice, gas: gas }, function (err, result) {
+        var tarea = document.getElementById('contractText');
+        tarea.innerHTML = result.hexDecode().replace(/\r\n|\r|\n/g, "</p><p>");
+        tarea.style.display = 'block';
+        document.getElementById('signButton').style.display = 'block';
+      });
+    }
+  function storeIt() {      
+      var fromAddr = global_keystore.getAddresses()[0];      
+      var Contract = web3.eth.contract(abi);      
+            var block = web3.eth.getBlock('latest').number;
+            var bytecode = "60606040523461000057604051610f0b380380610f0b833981016040528080518201919060200180518201919060200150505b600033600060006101000a81548173ffffffffffffffffffffffffffffffffffffffff02191690836c010000000000000000000000009081020402179055508260019080519060200190828054600181600116156101000203166002900490600052602060002090601f016020900481019282601f106100bd57805160ff19168380011785556100eb565b828001600101855582156100eb579182015b828111156100ea5782518255916020019190600101906100cf565b5b50905061011091905b8082111561010c5760008160009055506001016100f4565b5090565b5050600090505b81518110156101da57600280548060010182818154818355818115116101695781836000526020600020918201910161016891905b8082111561016457600081600090555060010161014c565b5090565b5b505050916000526020600020900160005b848481518110156100005790602001906020020151909190916101000a81548173ffffffffffffffffffffffffffffffffffffffff02191690836c01000000000000000000000000908102040217905550505b8080600101915050610117565b5b5050505b610d1e806101ed6000396000f36060604052361561007b576000357c01000000000000000000000000000000000000000000000000000000009004806314bc534414610080578063167d3e9c146100d75780633786d027146100f4578063ae87a03714610111578063b5d7df971461018c578063bfa3f4b11461019b578063f0cf198a146101f2575b610000565b346100005761008d61020f565b60405180806020018281038252838181518152602001915080519060200190602002808383829060006004602084601f0104600302600f01f1509050019250505060405180910390f35b34610000576100f2600480803590602001909190505061029a565b005b346100005761010f60048080359060200190919050506103a3565b005b346100005761011e610619565b60405180806020018281038252838181518152602001915080519060200190808383829060006004602084601f0104600302600f01f150905090810190601f16801561017e5780820380516001836020036101000a031916815260200191505b509250505060405180910390f35b3461000057610199610770565b005b34610000576101a86109c1565b60405180806020018281038252838181518152602001915080519060200190602002808383829060006004602084601f0104600302600f01f1509050019250505060405180910390f35b346100005761020d6004808035906020019091905050610a4c565b005b6020604051908101604052806000815260200150600280548060200260200160405190810160405280929190818152602001828054801561028f57602002820191906000526020600020905b8160009054906101000a900473ffffffffffffffffffffffffffffffffffffffff168152602001906001019080831161025b575b505050505090505b90565b600060009054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff163373ffffffffffffffffffffffffffffffffffffffff1614156103335780600060006101000a81548173ffffffffffffffffffffffffffffffffffffffff02191690836c010000000000000000000000009081020402179055505b61039f565b7f3b7e5ce22aaed8c7066618e3d648520147681e91cfe1d4df9bcab1b1112dffbb60405180806020018281038252600a8152602001807f4e6f74206f776e65722e0000000000000000000000000000000000000000000081526020015060200191505060405180910390a15b5b50565b6000600060009054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff163373ffffffffffffffffffffffffffffffffffffffff1614156105a85761040482610b9a565b90507fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff81141561053657600280548060010182818154818355818115116104775781836000526020600020918201910161047691905b8082111561047257600081600090555060010161045a565b5090565b5b505050916000526020600020900160005b84909190916101000a81548173ffffffffffffffffffffffffffffffffffffffff02191690836c01000000000000000000000000908102040217905550507f3b7e5ce22aaed8c7066618e3d648520147681e91cfe1d4df9bcab1b1112dffbb6040518080602001828103825260108152602001807f537562736372696265722061646465640000000000000000000000000000000081526020015060200191505060405180910390a16105a2565b7f3b7e5ce22aaed8c7066618e3d648520147681e91cfe1d4df9bcab1b1112dffbb6040518080602001828103825260148152602001807f416c72656164792061207375627363726962657200000000000000000000000081526020015060200191505060405180910390a15b5b610614565b7f3b7e5ce22aaed8c7066618e3d648520147681e91cfe1d4df9bcab1b1112dffbb60405180806020018281038252600a8152602001807f4e6f74206f776e65722e0000000000000000000000000000000000000000000081526020015060200191505060405180910390a15b5b5050565b60206040519081016040528060008152602001507fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff61065733610b9a565b14156106cd577f3b7e5ce22aaed8c7066618e3d648520147681e91cfe1d4df9bcab1b1112dffbb6040518080602001828103825260118152602001807f4e6f74206120737562736372696265722e00000000000000000000000000000081526020015060200191505060405180910390a161076c565b60018054600181600116156101000203166002900480601f0160208091040260200160405190810160405280929190818152602001828054600181600116156101000203166002900480156107635780601f1061073857610100808354040283529160200191610763565b820191906000526020600020905b81548152906001019060200180831161074657829003601f168201915b505050505090505b5b5b90565b7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff61079a33610b9a565b1415610810577f3b7e5ce22aaed8c7066618e3d648520147681e91cfe1d4df9bcab1b1112dffbb6040518080602001828103825260118152602001807f4e6f74206120737562736372696265722e00000000000000000000000000000081526020015060200191505060405180910390a16109be565b600061081b33610c5c565b90507fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff811415156108b6577f3b7e5ce22aaed8c7066618e3d648520147681e91cfe1d4df9bcab1b1112dffbb60405180806020018281038252600e8152602001807f416c7265616479207369676e656400000000000000000000000000000000000081526020015060200191505060405180910390a16109bb565b600380548060010182818154818355818115116108ff578183600052602060002091820191016108fe91905b808211156108fa5760008160009055506001016108e2565b5090565b5b505050916000526020600020900160005b33909190916101000a81548173ffffffffffffffffffffffffffffffffffffffff02191690836c01000000000000000000000000908102040217905550507f3b7e5ce22aaed8c7066618e3d648520147681e91cfe1d4df9bcab1b1112dffbb6040518080602001828103825260068152602001807f5369676e6564000000000000000000000000000000000000000000000000000081526020015060200191505060405180910390a15b5b5b505b5b565b60206040519081016040528060008152602001506003805480602002602001604051908101604052809291908181526020018280548015610a4157602002820191906000526020600020905b8160009054906101000a900473ffffffffffffffffffffffffffffffffffffffff1681526020019060010190808311610a0d575b505050505090505b90565b6000600060009054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff163373ffffffffffffffffffffffffffffffffffffffff161415610b295760006003805490501415610b2357610abb82610b9a565b90507fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff81141515610b2257600281815481101561000057906000526020600020900160005b6101000a81549073ffffffffffffffffffffffffffffffffffffffff02191690555b5b5b610b95565b7f3b7e5ce22aaed8c7066618e3d648520147681e91cfe1d4df9bcab1b1112dffbb60405180806020018281038252600a8152602001807f4e6f74206f776e65722e0000000000000000000000000000000000000000000081526020015060200191505060405180910390a15b5b5050565b60006000600090505b600280549050811015610c3257600281815481101561000057906000526020600020900160005b9054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff168373ffffffffffffffffffffffffffffffffffffffff161415610c2457809150610c56565b5b8080600101915050610ba3565b7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff91505b50919050565b60006000600090505b600380549050811015610cf457600381815481101561000057906000526020600020900160005b9054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff168373ffffffffffffffffffffffffffffffffffffffff161415610ce657809150610d18565b5b8080600101915050610c65565b7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff91505b5091905056";
+            var parts = [];
+            $('.part').each(function() { 
+              if (this.value.indexOf('0x') == -1) this.value = '0x' + this.value;
+              if (this.value.length != 42) return;
+              parts.push(this.value)
+            });            
+            if (!confirm('This contract has no parts. Is this right?')) return;
+
+            var contractInstance = Contract.new($("#contractTerms").val(), parts, {
+                data: bytecode,
+                gas: web3.eth.getBlock('latest').gasLimit,
+                gasPrice: 50000000000,
+                from: global_keystore.getAddresses()[0]
+            }, function (err, myContract) {
+                if (!err) {
+                    // NOTE: The callback will fire twice!
+                    // Once the contract has the transactionHash property set and once its deployed on an address.
+
+                    // e.g. check tx hash on the first call (transaction send)
+                    if (!myContract.address) {
+                        // endMessage(200, myContract.transactionHash, 'transactionHash', res);
+                        // check address on the second call (contract deployed)
+                    } else {
+                        $("#contractReceipt").html("Identifyer: " + myContract.address);
+                    }
+                    // Note that the returned "myContractReturned" === "myContract",
+                    // so the returned "myContractReturned" object will also get the address set.
+                } else {
+                    console.log(err.message);
+                }
+            });
+      var block = web3.eth.getBlock('latest').number;
+
+      var event = Contract.SendMessage(null, { fromBlock: 0, toBlock: 'latest' })
+      event.watch(function (err, result) {
+        if (typeof (result) !== 'undefined' && result.blockNumber > block) {
+          event.stopWatching();
+          if (!err) {
+            document.getElementById('receipt').innerHTML = "Result: <b>" + result.args["message"] + "</b>";
+            document.getElementById('signButton').style.display = 'none';
+          }
+          else
+            document.getElementById('receipt').innerText = "Error: " + err;
+        }
+      });
+      var functionName = "Sign";
+
+      var args = [];
+      var gasPrice = 50000000000
+      var gas = 3141592
+      args.push({ from: fromAddr, value: 0, gasPrice: gasPrice, gas: gas })
+      var callback = function (err, txhash) {
+        console.log('error: ' + err)
+        console.log('txhash: ' + txhash)
+        document.getElementById('receipt').innerHTML = '<b> Waiting result ...</b>';
+        document.getElementById('signBlock').innerHTML = '<b>Receipt: </b>' + txhash;
+        document.getElementById('signBlock').style.display = 'block';
+      }
+      args.push(callback)
+      contract[functionName].apply(this, args)
+    }
+
+    function SignIt() {
+      document.getElementById('signButton').style.display = 'none';
+      var fromAddr = global_keystore.getAddresses()[0];
+      var contractAddr = document.getElementById('contractAddr').value;
+      var contract = web3.eth.contract(abi).at(contractAddr);
+      var block = web3.eth.getBlock('latest').number;
+
+      var event = contract.SendMessage(null, { fromBlock: 0, toBlock: 'latest' })
+      event.watch(function (err, result) {
+        if (typeof (result) !== 'undefined' && result.blockNumber > block) {
+          event.stopWatching();
+          if (!err) {
+            document.getElementById('receipt').innerHTML = "Result: <b>" + result.args["message"] + "</b>";
+            document.getElementById('signButton').style.display = 'none';
+          }
+          else
+            document.getElementById('receipt').innerText = "Error: " + err;
+        }
+      });
+      var functionName = "Sign";
+
+      var args = [];
+      var gasPrice = 50000000000
+      var gas = 3141592
+      args.push({ from: fromAddr, value: 0, gasPrice: gasPrice, gas: gas })
+      var callback = function (err, txhash) {
+        console.log('error: ' + err)
+        console.log('txhash: ' + txhash)
+        document.getElementById('receipt').innerHTML = '<b> Waiting result ...</b>';
+        document.getElementById('signBlock').innerHTML = '<b>Receipt: </b>' + txhash;
+        document.getElementById('signBlock').style.display = 'block';
+      }
+      args.push(callback)
+      contract[functionName].apply(this, args)
+    }
+
+  </script>
+<nav class="navbar navbar-inverse">
+  <img src="https://thehub.thomsonreuters.com/resources/images/palette-1004/answer-company-tr-logo-retina.png" style="float:right; width: 178px; height: 38px;margin-top:-7px">
+</nav>
+<div class="container">
+  <h2>Your ID</h2>
+  <div class="row">
+    <div class="col-sm-2"><label for="id">  Your Identity Signature: </label></div>
+    <div class="col-sm-6">
+      <input type="text" name="id" id="seed" value="" size="80" onblur="loadId()"/>
+      <div id="address1"></div>
+    </div>
+  </div>
+</div>
+<div class="container">
+  <h2>Terms</h2>
+  <textarea id="contractTerms" cols="180" rows="50" style="text-align: justify"></textarea>
+</div>
+<div class="container">
+  <h2> Parts </h2>
+  <button id='addpart' onclick="addPart()"> Add subscriber address </button>
+  <div id="partAddresses"></div>
+</div>
+
+<div class="container">
+  <h2> Storing </h2>
+  <div class="row">
+    <div class="col-sm-4">      
+      <button id="signButton" onclick="storeIt()">Store this contract</button>
+    </div>
+    <div class="col-sm-8">
+      <div id="contractReceipt"></div>  
+    </div>
+  </div>
+</div>
+<div class="container">
+  <h2> Signature </h2>
+  <div class="row">
+    <div class="col-sm-8">
+      <div id="signBlock">Write a contract to sign it.</div>
+      <button id="signButton" onclick="SignIt()" style="display:none">By clicking this button, I agree with those terms.</button>
+    </div>
+    <div class="col-sm-4">
+      <div id="receipt"></div>  
+    </div>
+  </div>
+<br><br>
+</body>
+</html>
