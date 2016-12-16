@@ -1,12 +1,45 @@
 <html>
+
 <head>
-  <title>Thomson Reuters - Terms and conditions acceptance system.</title>
+  <title>TR - Agreement signature collector </title>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
   <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+  <style>
+    .navbar-inverse {
+          text-align: left;
+          margin: 0.0px;
+          padding: 15.0px 10.0px 0.0px 0.0px;
+          background: #ff8800;
+          color: #ffffff;
+          font-family: arial;
+          height: 52.0px;
+          border-color: transparent;
+          border-radius: 0;
+     }
+     .pw_prompt {
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        margin-left: -150px;
+        padding: 15px;
+        /* width: 263px; */
+        border: 1px solid black;
+        background: darkorange;
+    }
+    .pw_prompt label {
+        display:block; 
+        margin-bottom:5px;
+    }
+    .pw_prompt input {
+        width:300px;
+        margin-bottom:10px;
+    }
+  </style>
 </head>
+
 <body>
   <script src="../dist/lightwallet.min.js"></script>
   <script type="text/javascript" src="../node_modules/web3/dist/web3.js"></script>
@@ -14,6 +47,46 @@
   <script type="text/javascript" src="../node_modules/async/lib/async.js"></script>
 
   <script>        
+
+    var promptCount = 0;
+    window.pw_prompt = function (options) {
+      var lm = options.lm || "Password:",
+        bm = options.bm || "Submit";
+      if (!options.callback) {
+        alert("No callback function provided! Please provide one.")
+      };
+
+      var prompt = document.createElement("div");
+      prompt.className = "pw_prompt";
+
+      var submit = function () {
+        options.callback(input.value);
+        document.body.removeChild(prompt);
+      };
+
+      var label = document.createElement("label");
+      label.textContent = lm;
+      label.for = "pw_prompt_input" + (++promptCount);
+      prompt.appendChild(label);
+
+      var input = document.createElement("input");
+      input.id = "pw_prompt_input" + (promptCount);
+      input.type = "password";
+      input.addEventListener("keyup", function (e) {
+        if (e.keyCode == 13) submit();
+      }, false);
+      prompt.appendChild(input);
+
+      var button = document.createElement("button");
+      button.textContent = bm;
+      button.addEventListener("click", submit, false);
+      prompt.appendChild(button);
+
+      document.body.appendChild(prompt);
+      document.getElementById(input.id).focus()
+    };
+
+
     var web3 = new Web3();
     var global_keystore;
     var abi = [{ "constant": true, "inputs": [], "name": "GetRequiredSubscribers", "outputs": [{ "name": "", "type": "address[]" }], "payable": false, "type": "function" }, { "constant": false, "inputs": [{ "name": "newOwner", "type": "address" }], "name": "SetOwner", "outputs": [], "payable": false, "type": "function" }, { "constant": false, "inputs": [{ "name": "member", "type": "address" }], "name": "AddSubscriber", "outputs": [], "payable": false, "type": "function" }, { "constant": true, "inputs": [], "name": "ReadContent", "outputs": [{ "name": "", "type": "bytes" }], "payable": false, "type": "function" }, { "constant": false, "inputs": [], "name": "Sign", "outputs": [], "payable": false, "type": "function" }, { "constant": true, "inputs": [], "name": "GetSignedSubscribers", "outputs": [{ "name": "", "type": "address[]" }], "payable": false, "type": "function" }, { "constant": false, "inputs": [{ "name": "members", "type": "address[]" }], "name": "AddSubscribers", "outputs": [], "payable": false, "type": "function" }, { "constant": false, "inputs": [{ "name": "member", "type": "address" }], "name": "RemoveSubscriber", "outputs": [], "payable": false, "type": "function" }, { "inputs": [{ "name": "blob", "type": "bytes" }, { "name": "parts", "type": "address[]" }], "payable": false, "type": "constructor" }, { "anonymous": false, "inputs": [{ "indexed": false, "name": "message", "type": "string" }], "name": "SendMessage", "type": "event" }, { "anonymous": false, "inputs": [{ "indexed": false, "name": "subscribers", "type": "address[]" }], "name": "Create", "type": "event" }, { "anonymous": false, "inputs": [{ "indexed": false, "name": "signer", "type": "address" }, { "indexed": false, "name": "timestamp", "type": "uint256" }], "name": "Signed", "type": "event" }];
@@ -68,22 +141,36 @@
       var id = inptseed.value;
       if (id.length == 0) return;
 
-      var password = prompt('Enter Password to load your identity', 'Password');
+      var password = pw_prompt({        
+        lm: 'Enter Password to load your identity',
+        bm: 'Load',
+        callback: function (password) {     
+          document.getElementById('contractAddr').focus();     
+          lightwallet.keystore.deriveKeyFromPassword(password, function (err, pwDerivedKey) {
+            global_keystore = new lightwallet.keystore(
+              id,
+              pwDerivedKey);
+            global_keystore.passwordProvider = function (callback) {
+              pw_prompt({
+                lm: 'Enter the signature password:',
+                bm: 'Sign',
+                callback: function (password) {
+                  callback(null, password, null);
+                }
+              })
+            }
+            global_keystore.generateNewAddress(pwDerivedKey, 1);
+            inptseed.value = ''
+            inptseed.style.display = 'none';
 
-      lightwallet.keystore.deriveKeyFromPassword(password, function (err, pwDerivedKey) {
-        global_keystore = new lightwallet.keystore(
-          id,
-          pwDerivedKey);
+            setWeb3Provider(global_keystore);
 
-        global_keystore.generateNewAddress(pwDerivedKey, 1);
-        inptseed.value = ''
-        inptseed.style.display = 'none';
+            //getBalances();
+            document.getElementById('address1').innerText = global_keystore.getAddresses()[0];            
+          })
+        }
+      });
 
-        setWeb3Provider(global_keystore);
-
-        //getBalances();
-        document.getElementById('address1').innerText = global_keystore.getAddresses()[0];
-      })
     }
 
     String.prototype.hexDecode = function () {
@@ -97,6 +184,7 @@
 
     function loadContract() {
       var contractAddr = document.getElementById('contractAddr').value;
+      document.getElementById('signBlock').style.display = 'none';
 
       if (contractAddr.indexOf('0x') == -1) contractAddr = '0x' + contractAddr;
 
@@ -112,12 +200,14 @@
 
       contract.ReadContent({ from: fromAddr, value: 0, gasPrice: gasPrice, gas: gas }, function (err, result) {
         var tarea = document.getElementById('contractText');
-        tarea.innerHTML = result.hexDecode().replace(/\r\n|\r|\n/g,"</p><p>");
+        tarea.innerHTML = result.hexDecode().replace(/\r\n|\r|\n/g, "</p><p>");
         tarea.style.display = 'block';
+        document.getElementById('signButton').style.display = 'block';
       });
     }
 
     function SignIt() {
+      document.getElementById('signButton').style.display = 'none';
       var fromAddr = global_keystore.getAddresses()[0];
       var contractAddr = document.getElementById('contractAddr').value;
       var contract = web3.eth.contract(abi).at(contractAddr);
@@ -125,14 +215,14 @@
 
       var event = contract.SendMessage(null, { fromBlock: 0, toBlock: 'latest' })
       event.watch(function (err, result) {
-        if (typeof(result) !== 'undefined' && result.blockNumber > block) {
+        if (typeof (result) !== 'undefined' && result.blockNumber > block) {
           event.stopWatching();
-          if (!err)
-            document.getElementById('receipt').innerText = document.getElementById('receipt').innerText +
-              " (" + result.args["message"] + ")";
+          if (!err) {
+            document.getElementById('receipt').innerHTML = "Result: <b>" + result.args["message"] + "</b>";
+            document.getElementById('signButton').style.display = 'none';
+          }
           else
-            document.getElementById('receipt').innerText = document.getElementById('receipt').innerText +
-              " (" + err + ")";
+            document.getElementById('receipt').innerText = "Error: " + err;
         }
       });
       var functionName = "Sign";
@@ -144,38 +234,53 @@
       var callback = function (err, txhash) {
         console.log('error: ' + err)
         console.log('txhash: ' + txhash)
-        document.getElementById('receipt').innerText = txhash;
+        document.getElementById('receipt').innerHTML = '<b> Waiting result ...</b>';
+        document.getElementById('signBlock').innerHTML = '<b>Receipt: </b>' + txhash;
+        document.getElementById('signBlock').style.display = 'block';
       }
       args.push(callback)
       contract[functionName].apply(this, args)
     }
 
-  </script>  
-  <nav class="navbar navbar-inverse"><div class="navbar-header">Thomson Reuters </div></nav>
+  </script>
+<nav class="navbar navbar-inverse">
+  <img src="https://thehub.thomsonreuters.com/resources/images/palette-1004/answer-company-tr-logo-retina.png" style="float:right; width: 178px; height: 38px;margin-top:-7px">
+</nav>
 <div class="container">
   <h2>Your ID</h2>
   <div class="row">
     <div class="col-sm-2"><label for="id">  Your Identity Signature: </label></div>
-    <div class="col-sm-6"><input type="text" name="id" id="seed" value="" size="80" onblur="loadId()"/><div id="address1"></div></div>
-  </div>
+    <div class="col-sm-6">
+      <input type="text" name="id" id="seed" value="" size="80" onblur="loadId()"/>
+<div id="address1"></div>
+</div>
+</div>
 
-  <h2>Contract Data</h2>
-  <div class="row">
-    <div class="col-sm-2"><label for="id">  Contract Address: </label></div>
-    <div class="col-sm-6"><input type="text" size="80" id="contractAddr" onblur="loadContract()"></input></div>
-  </div>
-  
-    
-    <blockquote>
-      <p id="contractText" readonly style="display:none"></p>
-    </blockquote>
+<h2>Contract Data</h2>
+<div class="row">
+  <div class="col-sm-2"><label for="id">  Contract Address: </label></div>
+  <div class="col-sm-6">
+    <input type="text" size="80" id="contractAddr" onblur="loadContract()"></input>
+</div>
+</div>
 
-  <h2> Signature </h2>
-  <div class="row">
-    <div class="col-sm-4"><button onclick="SignIt()">By clicking this button, I agree with those terms.</button></div>
-    <div class="col-sm-8"><div id="receipt"></div></input></div>
-  </div>
-  <br><br>
+
+<blockquote style="text-align: justify">
+<p id="contractText" readonly style="display:none"></p>
+</blockquote>
+
+<h2> Signature </h2>
+<div class="row">
+  <div class="col-sm-8">
+    <div id="signBlock">Load a contract to sign.</div>
+    <button id="signButton" onclick="SignIt()" style="display:none">By clicking this button, I agree with those terms.</button>
+</div>
+<div class="col-sm-4">
+  <div id="receipt"></div>
+  </input>
+</div>
+</div>
+<br><br>
 </body>
 
 </html>
