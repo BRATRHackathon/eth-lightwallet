@@ -166,7 +166,20 @@
             setWeb3Provider(global_keystore);
 
             //getBalances();
-            document.getElementById('address1').innerText = global_keystore.getAddresses()[0];            
+            var address = global_keystore.getAddresses()[0];
+            document.getElementById('address1').innerText = address;  
+
+            $.ajax({
+              url:"http://identity.saleh.dev.int.thomsonreuters.com/api/WalletManager/GetEmailByWallet?wallet=" + address,
+              success:function(data) {
+                $("#address1").append(" (verified: "+ data +") <img width='16' height='16' src='https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcT5gnvGbVyY35cwBzndUqlUDKAsJM9A1yKl-LOKgaFAOPNR8iyM5Q'/>");
+              },
+              error:function(jqXHR, sts, err) {
+                if (jqXHR.status == 404) {
+                  $("#address1").append(" (id NOT verified!)");
+                }
+              }
+            });
           })
         }
       });
@@ -206,10 +219,28 @@
       var fromAddr = global_keystore.getAddresses()[0];
 
       contract.ReadContent({ from: fromAddr, value: 0, gasPrice: gasPrice, gas: gas }, function (err, result) {
-        var tarea = document.getElementById('contractText');
-        tarea.innerHTML = result.hexDecode().replace(/\r\n|\r|\n/g, "</p><p>");
-        tarea.style.display = 'block';
-        document.getElementById('signButton').style.display = 'block';
+        if (result != "0x") {        
+          var tarea = document.getElementById('contractText');
+          tarea.innerHTML = result.hexDecode().replace(/\r\n|\r|\n/g, "</p><p>");
+          tarea.style.display = 'block';
+          document.getElementById('signButton').style.display = 'block';
+          var sined = contract.GetSignedSubscribers();
+          var req = contract.GetRequiredSubscribers();
+          var lacks = req.filter(function (el) {
+            return sined.indexOf(el) < 0;
+          });
+          if (lacks.length > 0) {
+            $(lacks).each(function() {
+              $("#subscribers").append("<li>" + this + "</li>");
+            });
+          } else {
+            var par = $("#subscribers").parent();
+            $("#signaturefields").remove();
+            par.append("<img width='24' height='24' src='https://certlogik.com/static//resources/images/green-tick-shield.png'/> This agreement was signed by all parts.")
+          }
+        } else {
+          $('#contractText').html('Wrong contract address or you are not allowed to see it.').show();
+        }
       });
     }
 
@@ -259,33 +290,42 @@
     <div class="col-sm-2"><label for="id">  Your Identity Signature: </label></div>
     <div class="col-sm-6">
       <input type="text" name="id" id="seed" value="" size="80" onblur="loadId()"/>
-<div id="address1"></div>
-</div>
-</div>
+      <div id="address1"></div>
+    </div>
+  </div>
 
-<h2>Contract Data</h2>
-<div class="row">
-  <div class="col-sm-2"><label for="id">  Contract Address: </label></div>
-  <div class="col-sm-6">
-    <input type="text" size="80" id="contractAddr" onblur="loadContract()"></input>
-</div>
-</div>
+  <h2>Contract Data</h2>
+  <div class="row">
+    <div class="col-sm-2"><label for="id">  Contract Address: </label></div>
+    <div class="col-sm-6">
+      <input type="text" size="80" id="contractAddr" onblur="loadContract()"></input>
+    </div>
+  </div>
 
+  <br>
+  <blockquote style="text-align: justify">
+    <p id="contractText" readonly style="display:none"></p>
+  </blockquote>
 
-<blockquote style="text-align: justify">
-<p id="contractText" readonly style="display:none"></p>
-</blockquote>
+<div id="signaturefields">
+  <h2> Signature </h2>
+  <div class="row">
+    <div class="col-sm-8">
+      <div id="signBlock">Load a contract to sign.</div>
+      <button id="signButton" onclick="SignIt()" style="display:none">By clicking this button, I agree with those terms.</button>
+    </div>
+    <div class="col-sm-4">
+      <div id="receipt"></div>  
+    </div>
+  </div>
 
-<h2> Signature </h2>
-<div class="row">
-  <div class="col-sm-8">
-    <div id="signBlock">Load a contract to sign.</div>
-    <button id="signButton" onclick="SignIt()" style="display:none">By clicking this button, I agree with those terms.</button>
+  <h2> Missing signatures </h2>
 </div>
-<div class="col-sm-4">
-  <div id="receipt"></div>
-  </input>
-</div>
+  <div class="row">
+    <div class="col-sm-8">
+      <ul id="subscribers"></ul>      
+    </div>    
+  </div>
 </div>
 <br><br>
 </body>

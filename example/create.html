@@ -165,8 +165,21 @@
 
             setWeb3Provider(global_keystore);
 
-            //getBalances();
-            document.getElementById('address1').innerText = global_keystore.getAddresses()[0];
+            //getBalances();            
+            var address = global_keystore.getAddresses()[0];
+            document.getElementById('address1').innerText = address;  
+
+            $.ajax({
+              url:"http://identity.saleh.dev.int.thomsonreuters.com/api/WalletManager/GetEmailByWallet?wallet=" + address,
+              success:function(data) {
+                $("#address1").append(" ("+ data +") <img width='16' height='16' src='https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcT5gnvGbVyY35cwBzndUqlUDKAsJM9A1yKl-LOKgaFAOPNR8iyM5Q'/>");
+              },
+              error:function(jqXHR, sts, err) {
+                if (jqXHR.status == 404) {
+                  $("#address1").append(" (id NOT verified!)");
+                }
+              }
+            });
           })
         }
       });
@@ -182,9 +195,28 @@
       return decodeURIComponent(escape(str));
     }
 
+    function loadid(obj) {
+      var $o = $(obj);
+      var address = $o.val();
+      if (address.indexOf('0x') == -1) address = '0x' + address;
+      if (address.length == 42) {
+        $.ajax({
+              url:"http://identity.saleh.dev.int.thomsonreuters.com/api/WalletManager/GetEmailByWallet?wallet=" + address,
+              success:function(data) {
+                $o.parent().parent().append("<div class='col-sm-3'>"+ data +" <img width='16' height='16' src='https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcT5gnvGbVyY35cwBzndUqlUDKAsJM9A1yKl-LOKgaFAOPNR8iyM5Q'/></div>");
+              },
+              error:function(jqXHR, sts, err) {
+                if (jqXHR.status == 404) {
+                  $o.parent().parent().append("<div class='col-sm-3'>(NOT verified!)</div>");
+                }
+              }
+            });
+      }
+    }
+
     function addPart() {
       var ctainer = $('#partAddresses');
-      ctainer.append($('<div class="col-sm-8"><input size="80" class="part" type="text" style="margin: 5px"/></div>'));
+      ctainer.append($('<div class="col-sm-7"><input onblur="loadid(this)" size="80" class="part" type="text" style="margin: 5px"/></div>'));
     }
 
     function loadContract() {
