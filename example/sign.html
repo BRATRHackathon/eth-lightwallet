@@ -89,8 +89,8 @@
 
     var web3 = new Web3();
     var global_keystore;
-    var abi = [{ "constant": true, "inputs": [], "name": "GetRequiredSubscribers", "outputs": [{ "name": "", "type": "address[]" }], "payable": false, "type": "function" }, { "constant": false, "inputs": [{ "name": "newOwner", "type": "address" }], "name": "SetOwner", "outputs": [], "payable": false, "type": "function" }, { "constant": false, "inputs": [{ "name": "member", "type": "address" }], "name": "AddSubscriber", "outputs": [], "payable": false, "type": "function" }, { "constant": true, "inputs": [], "name": "ReadContent", "outputs": [{ "name": "", "type": "bytes" }], "payable": false, "type": "function" }, { "constant": false, "inputs": [], "name": "Sign", "outputs": [], "payable": false, "type": "function" }, { "constant": true, "inputs": [], "name": "GetSignedSubscribers", "outputs": [{ "name": "", "type": "address[]" }], "payable": false, "type": "function" }, { "constant": false, "inputs": [{ "name": "members", "type": "address[]" }], "name": "AddSubscribers", "outputs": [], "payable": false, "type": "function" }, { "constant": false, "inputs": [{ "name": "member", "type": "address" }], "name": "RemoveSubscriber", "outputs": [], "payable": false, "type": "function" }, { "inputs": [{ "name": "blob", "type": "bytes" }, { "name": "parts", "type": "address[]" }], "payable": false, "type": "constructor" }, { "anonymous": false, "inputs": [{ "indexed": false, "name": "message", "type": "string" }], "name": "SendMessage", "type": "event" }, { "anonymous": false, "inputs": [{ "indexed": false, "name": "subscribers", "type": "address[]" }], "name": "Create", "type": "event" }, { "anonymous": false, "inputs": [{ "indexed": false, "name": "signer", "type": "address" }, { "indexed": false, "name": "timestamp", "type": "uint256" }], "name": "Signed", "type": "event" }];
-
+    var abi = [{"constant":true,"inputs":[],"name":"GetRequiredSubscribers","outputs":[{"name":"","type":"address[]"}],"payable":false,"type":"function"},{"constant":false,"inputs":[{"name":"newOwner","type":"address"}],"name":"SetOwner","outputs":[],"payable":false,"type":"function"},{"constant":false,"inputs":[{"name":"member","type":"address"}],"name":"AddSubscriber","outputs":[],"payable":false,"type":"function"},{"constant":true,"inputs":[],"name":"ReadContent","outputs":[{"name":"","type":"bytes"}],"payable":false,"type":"function"},{"constant":false,"inputs":[],"name":"Sign","outputs":[],"payable":false,"type":"function"},{"constant":true,"inputs":[],"name":"GetSignedSubscribers","outputs":[{"name":"","type":"address[]"}],"payable":false,"type":"function"},{"constant":false,"inputs":[{"name":"member","type":"address"}],"name":"RemoveSubscriber","outputs":[],"payable":false,"type":"function"},{"inputs":[{"name":"blob","type":"bytes"},{"name":"parts","type":"address[]"}],"payable":false,"type":"constructor"},{"anonymous":false,"inputs":[{"indexed":false,"name":"message","type":"string"}],"name":"SendMessage","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"name":"subscriber","type":"address"}],"name":"SubscriberAdd","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"name":"subscriber","type":"address"},{"indexed":false,"name":"when","type":"uint256"}],"name":"SubscriberSign","type":"event"}];
+    
     function setWeb3Provider(keystore) {
       var web3Provider = new HookedWeb3Provider({
         host: "http://localhost:8545",
@@ -215,14 +215,16 @@
       var contract = web3.eth.contract(abi).at(contractAddr);
 
       var gasPrice = 50000000000
-      var gas = 3141592
+      var gas = 47000000
       var fromAddr = global_keystore.getAddresses()[0];
 
       contract.ReadContent({ from: fromAddr, value: 0, gasPrice: gasPrice, gas: gas }, function (err, result) {
+        $("#status").html('');
         if (result != "0x") {        
           var tarea = document.getElementById('contractText');
           tarea.innerHTML = result.hexDecode().replace(/\r\n|\r|\n/g, "</p><p>");
           tarea.style.display = 'block';
+
           document.getElementById('signButton').style.display = 'block';
           var sined = contract.GetSignedSubscribers();
           var req = contract.GetRequiredSubscribers();
@@ -242,6 +244,16 @@
           $('#contractText').html('Wrong contract address or you are not allowed to see it.').show();
         }
       });
+
+        var eventMessageAll = contract.SubscriberSign(null, { fromBlock: 0, toBlock: 'latest' })
+        eventMessageAll.watch(function (err, result) {       
+          if (!err) {
+            var date = new Date(result.args["when"].c[0] * 1000);
+            $("#status").append("<li><b> Signed by:</b> " + result.args["subscriber"] + "&nbsp;&nbsp; | &nbsp;&nbsp;<b>When: </b>" + date.toLocaleString() + "</li>");
+          }
+          else
+            document.getElementById('receipt').innerText = "Error: " + err;
+        });
     }
 
     function SignIt() {
@@ -250,11 +262,25 @@
       var contractAddr = document.getElementById('contractAddr').value;
       var contract = web3.eth.contract(abi).at(contractAddr);
       var block = web3.eth.getBlock('latest').number;
-
-      var event = contract.SendMessage(null, { fromBlock: 0, toBlock: 'latest' })
-      event.watch(function (err, result) {
+      
+      var eventMessage = contract.SendMessage(null, { fromBlock: 0, toBlock: 'latest' })
+      eventMessage.watch(function (err, result) {
         if (typeof (result) !== 'undefined' && result.blockNumber > block) {
-          event.stopWatching();
+          eventSign.stopWatching();
+          eventMessage.stopWatching();
+          if (!err) {
+            document.getElementById('receipt').innerHTML = "Result: <b>" + result.args["message"] + "</b>";
+            document.getElementById('signButton').style.display = 'none';
+          }
+          else
+            document.getElementById('receipt').innerText = "Error: " + err;
+        }
+      });
+      var eventSign = contract.SubscriberSign(null, { fromBlock: 0, toBlock: 'latest' })
+      eventSign.watch(function (err, result) {
+        if (typeof (result) !== 'undefined' && result.blockNumber > block) {
+          eventSign.stopWatching();
+          eventMessage.stopWatching();
           if (!err) {
             document.getElementById('receipt').innerHTML = "Result: <b>" + result.args["message"] + "</b>";
             document.getElementById('signButton').style.display = 'none';
@@ -267,7 +293,7 @@
 
       var args = [];
       var gasPrice = 50000000000
-      var gas = 3141592
+      var gas = 47000000
       args.push({ from: fromAddr, value: 0, gasPrice: gasPrice, gas: gas })
       var callback = function (err, txhash) {
         console.log('error: ' + err)
@@ -327,6 +353,16 @@
     </div>    
   </div>
 </div>
+<div class="container">
+  <h2> Contract status</h2>
+  <div class="row">
+    <div class="col-sm-8">
+      <ul id="status"></ul>      
+    </div>    
+  </div>
+</div>
+<br><br>
+<br><br>
 <br><br>
 </body>
 
