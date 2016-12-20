@@ -153,7 +153,7 @@
             global_keystore.passwordProvider = function (callback) {
               pw_prompt({
                 lm: 'Enter the signature password:',
-                bm: 'Sign',
+                bm: 'Submit',
                 callback: function (password) {
                   callback(null, password, null);
                 }
@@ -197,7 +197,7 @@
 
     function loadid(obj) {
       var $o = $(obj);
-      var address = $o.val();
+      var address = $o.val().trim();
       if (address.indexOf('0x') == -1) address = '0x' + address;
       if (address.length == 42) {
         $.ajax({
